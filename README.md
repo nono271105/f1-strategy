@@ -1,4 +1,10 @@
-# F1 Strategy 🏎️
+<h1 align="center">
+ F1 Strategy 🏎️
+</h1>
+
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/) 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Status: Active](https://img.shields.io/badge/status-Active-brightgreen.svg)](#)
 
 Une application de calcul de stratégie de course pour la Formule 1, développée en Python avec une interface graphique Tkinter.
 
@@ -43,8 +49,6 @@ cd f1_strategy
 # Créer un environnement virtuel (optionnel mais recommandé)
 python3 -m venv venv
 source venv/bin/activate
-
-# Aucune dépendance externe requise - tkinter est inclus avec Python
 ```
 
 ## Utilisation
@@ -58,10 +62,9 @@ L'application se lancera avec une interface graphique où vous pourrez :
 2. Entrer les données des pneus
 3. Voir les calculs de stratégie en temps réel
 
-## Requis
+## Prérequis
 
-- Python 3.6+
-- Tkinter (inclus avec Python standard)
+- Python
 - NumPy
 
 ## Structure du projet
@@ -69,13 +72,12 @@ L'application se lancera avec une interface graphique où vous pourrez :
 ```
 f1_strategy/
 ├── strategy.py          # Fichier principal avec l'application
-├── README.md           # Ce fichier
-└── venv/              # Environnement virtuel (optionnel)
+└── README.md           # Ce fichier
 ```
 
 ## Licence
 
-Ce projet est fourni à titre personnel pour l'analyse de stratégies F1.
+Ce projet est fait à titre personnel et n'a aucune vocation commerciale.
 
 ## Notes
 
