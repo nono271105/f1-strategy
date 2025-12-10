@@ -17,6 +17,9 @@ F1 Strategy est un outil permettant d'analyser et de calculer les stratégies op
 - Les temps d'arrêt au stand
 - La dégradation des performances en fonction du carburant
 
+<img width="1440" height="900" alt="Capture d’écran 2025-12-10 à 22 43 17" src="https://github.com/user-attachments/assets/5b25de4b-12bb-47cc-bf45-1e41ea028ea9" />
+
+
 ## Fonctionnalités
 
 - **Calcul d'usure de pneus** : Simulation réaliste de la dégradation des pneus à différents composés
