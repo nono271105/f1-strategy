@@ -14,9 +14,9 @@ class F1StrategyCalculator:
         # Style configuration
         style = ttk.Style()
         style.theme_use('clam')
-        style.configure('TLabel', background='#1a1a1a', foreground='white', font=('Arial', 10))
+        style.configure('TLabel', foreground='black', font=('Arial', 10))
         style.configure('TButton', font=('Arial', 11, 'bold'))
-        style.configure('TFrame', background='#1a1a1a')
+        style.configure('TFrame')
         style.configure('Title.TLabel', font=('Arial', 16, 'bold'), foreground='#e10600')
         
         self.create_widgets()
@@ -27,7 +27,7 @@ class F1StrategyCalculator:
         main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
         # Title
-        title = ttk.Label(main_frame, text="🏎️ F1 STRATEGY CALCULATOR", style='Title.TLabel')
+        title = ttk.Label(main_frame, text="F1 STRATEGY CALCULATOR", style='Title.TLabel')
         title.grid(row=0, column=0, columnspan=2, pady=10)
         
         # Left panel - Inputs
@@ -132,7 +132,7 @@ class F1StrategyCalculator:
         row += 1
         
         # HARD tire parameters
-        ttk.Label(left_frame, text="═══ HARD ═══", foreground="#e6e6e6", 
+        ttk.Label(left_frame, text="═══ HARD ═══", foreground="#0A0909", 
                  font=('Arial', 11, 'bold')).grid(row=row, column=0, columnspan=2, pady=5)
         row += 1
         
@@ -152,9 +152,9 @@ class F1StrategyCalculator:
         row += 1
         
         # Calculate button
-        calc_btn = tk.Button(left_frame, text="🏁 CALCULER LES STRATÉGIES", 
+        calc_btn = tk.Button(left_frame, text="CALCULER LES STRATÉGIES", 
                             command=self.calculate_strategies,
-                            bg='#e10600', fg='white', font=('Arial', 12, 'bold'),
+                            bg='#e10600', fg='black', font=('Arial', 12, 'bold'),
                             cursor='hand2', relief=tk.RAISED, bd=3)
         calc_btn.grid(row=row, column=0, columnspan=2, pady=20, sticky='ew')
         
