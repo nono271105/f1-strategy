@@ -1,8 +1,11 @@
 import tkinter as tk
-from tkinter import ttk, scrolledtext
+from tkinter import ttk, scrolledtext, simpledialog, messagebox
 import math
 import numpy as np
 from functools import lru_cache
+import json
+import os
+from pathlib import Path
 
 class F1StrategyCalculator:
     def __init__(self, root):
@@ -10,6 +13,14 @@ class F1StrategyCalculator:
         self.root.title("F1 Strategy Calculator")
         self.root.geometry("1200x800")
         self.root.configure(bg='#1a1a1a')
+        
+        # Setup saves directory and file
+        self.saves_dir = Path(__file__).parent / "saves"
+        self.saves_dir.mkdir(exist_ok=True)
+        self.saves_file = self.saves_dir / "presets.json"
+        
+        # Load existing saves
+        self.presets = self.load_presets()
         
         # Style configuration
         style = ttk.Style()
@@ -30,15 +41,41 @@ class F1StrategyCalculator:
         title = ttk.Label(main_frame, text="F1 STRATEGY CALCULATOR", style='Title.TLabel')
         title.grid(row=0, column=0, columnspan=2, pady=10)
         
-        # Left panel - Inputs
-        left_frame = ttk.LabelFrame(main_frame, text="Paramètres de course", padding="10")
-        left_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5)
+        # Left panel with scrollbar
+        left_container = ttk.Frame(main_frame)
+        left_container.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5)
+        
+        # Create canvas with scrollbar for left panel
+        canvas = tk.Canvas(left_container, highlightthickness=0, bd=0)
+        scrollbar = ttk.Scrollbar(left_container, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Bind mouse wheel
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        
+        # Left frame inside canvas
+        left_frame = ttk.LabelFrame(scrollable_frame, text="Paramètres de course", padding="10")
+        left_frame.pack(fill="both", expand=True, padx=5, pady=5)
         
         row = 0
         
         # Basic race parameters
         ttk.Label(left_frame, text="Tours dans la course:").grid(row=row, column=0, sticky=tk.W, pady=5)
-        self.laps_in_race = tk.StringVar(value="78")
+        self.laps_in_race = tk.StringVar(value="0")
         ttk.Entry(left_frame, textvariable=self.laps_in_race, width=15).grid(row=row, column=1, pady=5)
         row += 1
         
@@ -54,7 +91,7 @@ class F1StrategyCalculator:
 
         # Fuel parameters
         ttk.Label(left_frame, text="Carburant départ (kg):").grid(row=row, column=0, sticky=tk.W, pady=5)
-        self.starting_fuel = tk.StringVar(value="110")
+        self.starting_fuel = tk.StringVar(value="0")
         ttk.Entry(left_frame, textvariable=self.starting_fuel, width=15).grid(row=row, column=1, pady=5)
         row += 1
 
@@ -64,7 +101,7 @@ class F1StrategyCalculator:
         row += 1
 
         ttk.Label(left_frame, text="Temps / kg carburant (s/kg):").grid(row=row, column=0, sticky=tk.W, pady=5)
-        self.fuel_time_per_kg = tk.StringVar(value="0.035")
+        self.fuel_time_per_kg = tk.StringVar(value="0.03")
         ttk.Entry(left_frame, textvariable=self.fuel_time_per_kg, width=15).grid(row=row, column=1, pady=5)
         row += 1
         
@@ -97,17 +134,17 @@ class F1StrategyCalculator:
         row += 1
         
         ttk.Label(left_frame, text="Temps au tour neuf (s):").grid(row=row, column=0, sticky=tk.W, pady=2)
-        self.soft_lap_time = tk.StringVar(value="71.112")
+        self.soft_lap_time = tk.StringVar(value="")
         ttk.Entry(left_frame, textvariable=self.soft_lap_time, width=15).grid(row=row, column=1, pady=2)
         row += 1
         
         ttk.Label(left_frame, text="Tours max:").grid(row=row, column=0, sticky=tk.W, pady=2)
-        self.soft_max_laps = tk.StringVar(value="29")
+        self.soft_max_laps = tk.StringVar(value="")
         ttk.Entry(left_frame, textvariable=self.soft_max_laps, width=15).grid(row=row, column=1, pady=2)
         row += 1
         
         ttk.Label(left_frame, text="Dégradation/tour (s):").grid(row=row, column=0, sticky=tk.W, pady=2)
-        self.soft_wear_rate = tk.StringVar(value="0.05")
+        self.soft_wear_rate = tk.StringVar(value="")
         ttk.Entry(left_frame, textvariable=self.soft_wear_rate, width=15).grid(row=row, column=1, pady=2)
         row += 1
         
@@ -117,17 +154,17 @@ class F1StrategyCalculator:
         row += 1
         
         ttk.Label(left_frame, text="Temps au tour neuf (s):").grid(row=row, column=0, sticky=tk.W, pady=2)
-        self.medium_lap_time = tk.StringVar(value="71.820")
+        self.medium_lap_time = tk.StringVar(value="")
         ttk.Entry(left_frame, textvariable=self.medium_lap_time, width=15).grid(row=row, column=1, pady=2)
         row += 1
         
         ttk.Label(left_frame, text="Tours max:").grid(row=row, column=0, sticky=tk.W, pady=2)
-        self.medium_max_laps = tk.StringVar(value="39")
+        self.medium_max_laps = tk.StringVar(value="")
         ttk.Entry(left_frame, textvariable=self.medium_max_laps, width=15).grid(row=row, column=1, pady=2)
         row += 1
         
         ttk.Label(left_frame, text="Dégradation/tour (s):").grid(row=row, column=0, sticky=tk.W, pady=2)
-        self.medium_wear_rate = tk.StringVar(value="0.04")
+        self.medium_wear_rate = tk.StringVar(value="")
         ttk.Entry(left_frame, textvariable=self.medium_wear_rate, width=15).grid(row=row, column=1, pady=2)
         row += 1
         
@@ -137,17 +174,17 @@ class F1StrategyCalculator:
         row += 1
         
         ttk.Label(left_frame, text="Temps au tour neuf (s):").grid(row=row, column=0, sticky=tk.W, pady=2)
-        self.hard_lap_time = tk.StringVar(value="72.500")
+        self.hard_lap_time = tk.StringVar(value="")
         ttk.Entry(left_frame, textvariable=self.hard_lap_time, width=15).grid(row=row, column=1, pady=2)
         row += 1
         
         ttk.Label(left_frame, text="Tours max:").grid(row=row, column=0, sticky=tk.W, pady=2)
-        self.hard_max_laps = tk.StringVar(value="54")
+        self.hard_max_laps = tk.StringVar(value="")
         ttk.Entry(left_frame, textvariable=self.hard_max_laps, width=15).grid(row=row, column=1, pady=2)
         row += 1
         
         ttk.Label(left_frame, text="Dégradation/tour (s):").grid(row=row, column=0, sticky=tk.W, pady=2)
-        self.hard_wear_rate = tk.StringVar(value="0.03")
+        self.hard_wear_rate = tk.StringVar(value="")
         ttk.Entry(left_frame, textvariable=self.hard_wear_rate, width=15).grid(row=row, column=1, pady=2)
         row += 1
         
@@ -157,6 +194,44 @@ class F1StrategyCalculator:
                             bg='#e10600', fg='black', font=('Arial', 12, 'bold'),
                             cursor='hand2', relief=tk.RAISED, bd=3)
         calc_btn.grid(row=row, column=0, columnspan=2, pady=20, sticky='ew')
+        row += 1
+        
+        # Save button
+        save_btn = tk.Button(left_frame, text="SAUVEGARDER LES DONNÉES", 
+                            command=self.save_preset,
+                            bg='#0066cc', fg='black', font=('Arial', 12, 'bold'),
+                            cursor='hand2', relief=tk.RAISED, bd=3)
+        save_btn.grid(row=row, column=0, columnspan=2, pady=20, sticky='ew')
+        row += 1
+        
+        # Separator before presets
+        ttk.Separator(left_frame, orient='horizontal').grid(row=row, column=0, columnspan=2, sticky='ew', pady=10)
+        row += 1
+        
+        # Presets section
+        ttk.Label(left_frame, text="Charger une sauvegarde:", font=('Arial', 10, 'bold')).grid(row=row, column=0, sticky=tk.W, pady=5)
+        row += 1
+        
+        self.presets_var = tk.StringVar(value="")
+        self.presets_combo = ttk.Combobox(left_frame, textvariable=self.presets_var, 
+                                          values=list(self.presets.keys()), width=20, state="readonly")
+        self.presets_combo.grid(row=row, column=0, columnspan=2, pady=5, sticky='ew')
+        row += 1
+        
+        # Load button
+        load_btn = tk.Button(left_frame, text="RECHARGER", 
+                            command=self.load_preset,
+                            bg='#009900', fg='black', font=('Arial', 10, 'bold'),
+                            cursor='hand2', relief=tk.RAISED, bd=2)
+        load_btn.grid(row=row, column=0, sticky='ew', pady=5, padx=(0, 2))
+        
+        # Delete button
+        delete_btn = tk.Button(left_frame, text="SUPPRIMER", 
+                              command=self.delete_preset,
+                              bg='#cc0000', fg='black', font=('Arial', 10, 'bold'),
+                              cursor='hand2', relief=tk.RAISED, bd=2)
+        delete_btn.grid(row=row, column=1, sticky='ew', pady=5, padx=(2, 0))
+        row += 1
         
         # Right panel - Results
         right_frame = ttk.LabelFrame(main_frame, text="Résultats - Meilleures stratégies", padding="10")
@@ -174,6 +249,141 @@ class F1StrategyCalculator:
         self.root.rowconfigure(0, weight=1)
         main_frame.columnconfigure(1, weight=1)
         main_frame.rowconfigure(1, weight=1)
+        left_container.columnconfigure(0, weight=1)
+        left_container.rowconfigure(0, weight=1)
+    
+    def load_presets(self):
+        """Load presets from JSON file"""
+        if self.saves_file.exists():
+            try:
+                with open(self.saves_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except:
+                return {}
+        return {}
+    
+    def save_presets(self):
+        """Save presets to JSON file"""
+        try:
+            with open(self.saves_file, 'w', encoding='utf-8') as f:
+                json.dump(self.presets, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            messagebox.showerror("Erreur", f"Impossible de sauvegarder les données: {e}")
+    
+    def save_preset(self):
+        """Save current input values as a preset"""
+        # Ask for preset name
+        name = simpledialog.askstring("Sauvegarder les données", 
+                                      "Entrez un nom pour cette sauvegarde:",
+                                      parent=self.root)
+        
+        if name is None:  # User cancelled
+            return
+        
+        if not name.strip():
+            messagebox.showwarning("Erreur", "Le nom ne peut pas être vide")
+            return
+        
+        # Check if preset already exists
+        if name in self.presets:
+            if not messagebox.askyesno("Confirmation", 
+                                      f"La sauvegarde '{name}' existe déjà.\nVoulez-vous la remplacer?",
+                                      parent=self.root):
+                return
+        
+        # Collect all current values
+        preset_data = {
+            'laps_in_race': self.laps_in_race.get(),
+            'laps_completed': self.laps_completed.get(),
+            'pit_stop_delta': self.pit_stop_delta.get(),
+            'starting_fuel': self.starting_fuel.get(),
+            'fuel_per_lap': self.fuel_per_lap.get(),
+            'fuel_time_per_kg': self.fuel_time_per_kg.get(),
+            'starting_compound': self.starting_compound.get(),
+            'starting_wear': self.starting_wear.get(),
+            'must_use_two': self.must_use_two.get(),
+            'soft_lap_time': self.soft_lap_time.get(),
+            'soft_max_laps': self.soft_max_laps.get(),
+            'soft_wear_rate': self.soft_wear_rate.get(),
+            'medium_lap_time': self.medium_lap_time.get(),
+            'medium_max_laps': self.medium_max_laps.get(),
+            'medium_wear_rate': self.medium_wear_rate.get(),
+            'hard_lap_time': self.hard_lap_time.get(),
+            'hard_max_laps': self.hard_max_laps.get(),
+            'hard_wear_rate': self.hard_wear_rate.get(),
+        }
+        
+        # Save to presets
+        self.presets[name] = preset_data
+        self.save_presets()
+        
+        # Update combo box
+        self.presets_combo['values'] = list(self.presets.keys())
+        self.presets_var.set(name)
+        
+        messagebox.showinfo("Succès", f"Données sauvegardées sous '{name}'")
+    
+    def load_preset(self):
+        """Load a preset and fill in the input fields"""
+        preset_name = self.presets_var.get()
+        
+        if not preset_name:
+            messagebox.showwarning("Erreur", "Veuillez sélectionner une sauvegarde")
+            return
+        
+        if preset_name not in self.presets:
+            messagebox.showerror("Erreur", "Sauvegarde introuvable")
+            return
+        
+        preset_data = self.presets[preset_name]
+        
+        # Load all values
+        self.laps_in_race.set(preset_data.get('laps_in_race', '78'))
+        self.laps_completed.set(preset_data.get('laps_completed', '0'))
+        self.pit_stop_delta.set(preset_data.get('pit_stop_delta', '22'))
+        self.starting_fuel.set(preset_data.get('starting_fuel', '110'))
+        self.fuel_per_lap.set(preset_data.get('fuel_per_lap', '1.5'))
+        self.fuel_time_per_kg.set(preset_data.get('fuel_time_per_kg', '0.035'))
+        self.starting_compound.set(preset_data.get('starting_compound', 'Any'))
+        self.starting_wear.set(preset_data.get('starting_wear', '0'))
+        self.must_use_two.set(preset_data.get('must_use_two', True))
+        self.soft_lap_time.set(preset_data.get('soft_lap_time', '71.112'))
+        self.soft_max_laps.set(preset_data.get('soft_max_laps', '29'))
+        self.soft_wear_rate.set(preset_data.get('soft_wear_rate', '0.05'))
+        self.medium_lap_time.set(preset_data.get('medium_lap_time', '71.820'))
+        self.medium_max_laps.set(preset_data.get('medium_max_laps', '39'))
+        self.medium_wear_rate.set(preset_data.get('medium_wear_rate', '0.04'))
+        self.hard_lap_time.set(preset_data.get('hard_lap_time', '72.500'))
+        self.hard_max_laps.set(preset_data.get('hard_max_laps', '54'))
+        self.hard_wear_rate.set(preset_data.get('hard_wear_rate', '0.03'))
+        
+        messagebox.showinfo("Succès", f"Données de '{preset_name}' chargées")
+    
+    def delete_preset(self):
+        """Delete a preset"""
+        preset_name = self.presets_var.get()
+        
+        if not preset_name:
+            messagebox.showwarning("Erreur", "Veuillez sélectionner une sauvegarde à supprimer")
+            return
+        
+        if preset_name not in self.presets:
+            messagebox.showerror("Erreur", "Sauvegarde introuvable")
+            return
+        
+        if not messagebox.askyesno("Confirmation", 
+                                  f"Êtes-vous sûr de vouloir supprimer '{preset_name}'?",
+                                  parent=self.root):
+            return
+        
+        del self.presets[preset_name]
+        self.save_presets()
+        
+        # Update combo box
+        self.presets_combo['values'] = list(self.presets.keys())
+        self.presets_var.set("")
+        
+        messagebox.showinfo("Succès", f"Sauvegarde '{preset_name}' supprimée")
         
     def generate_wear_effect(self, max_laps, wear_rate):
         """Generate realistic linear tire wear model with gradual degradation.
