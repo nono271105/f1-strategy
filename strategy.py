@@ -176,37 +176,34 @@ class F1StrategyCalculator:
         main_frame.rowconfigure(1, weight=1)
         
     def generate_wear_effect(self, max_laps, wear_rate):
-        """Generate realistic 4-phase tire wear model:
-        Phase 1 (Optimal): Laps 1-5, degradation ≈ 0 (warm-up phase)
-        Phase 2 (Linear): Laps 6-80% of max_laps, degradation = wear_rate
-        Phase 3 (Cliff): 80%-100% of max_laps, degradation ≈ 2x wear_rate (aging cliff)
-        Phase 4 (Death): Beyond max_laps, very high penalty (returns None/invalid)
+        """Generate realistic linear tire wear model with gradual degradation.
+        
+        Simple approach:
+        - Laps 1-2: Warm-up phase, no penalty (tires building heat)
+        - Laps 3+: Linear degradation starting from lap 3
+        - Beyond max_laps: Invalid/very slow
         """
         wear_effect = []
         br = float(wear_rate)
         ml = int(max_laps)
-        cliff_threshold = int(0.8 * ml)
         
         for lap in range(ml + 1):
-            if lap <= 5:
-                # Phase 1: Optimal, minimal degradation during warm-up
+            if lap <= 2:
+                # Laps 1-2: Warm-up, minimal penalty
                 val = 0.0
-            elif lap <= cliff_threshold:
-                # Phase 2: Linear degradation
-                val = (lap - 5) * br
             else:
-                # Phase 3: Cliff degradation (accelerated aging)
-                laps_in_cliff = lap - cliff_threshold
-                linear_part = (cliff_threshold - 5) * br
-                cliff_part = laps_in_cliff * br * 2.0  # 2x degradation in cliff
-                val = linear_part + cliff_part
+                # Linear degradation: each lap costs more
+                val = (lap - 2) * br
             
             wear_effect.append(val)
         return wear_effect
 
     def simulate_stint(self, laps, compound, starting_wear_idx, lap_times, wear_effects,
                        starting_fuel, fuel_per_lap, fuel_time_per_kg, first_stint=False):
-        """Simulate a single stint with vectorized fuel consumption calculation.
+        """Simulate a single stint with fuel consumption and tire wear.
+        
+        Fuel model: Heavier fuel = slightly slower (penalty proportional to extra weight)
+        Tire model: Degradation increases with lap count
         
         Returns (total_time, ending_wear_index, ending_fuel) or None if invalid.
         """
@@ -218,35 +215,35 @@ class F1StrategyCalculator:
         if ending_wear_idx >= len(wear):
             return None
         
-        fuel_time_per_kg = float(fuel_time_per_kg)
+        fuel_time_per_kg_f = float(fuel_time_per_kg)
         fuel_per = float(fuel_per_lap)
         
-        # Calculate penalties: warm-up penalty on first lap
-        penalty_first_lap = 0.8
-        penalties = np.zeros(laps)
-        if laps > 0:
-            penalties[0] = penalty_first_lap
+        # Small warm-up penalty on first lap only
+        penalty_first_lap = 0.3
         
-        # Get wear indices for each lap
-        if first_stint:
-            wear_indices = np.arange(starting_wear_idx, starting_wear_idx + laps)
-        else:
-            wear_indices = np.arange(laps)
+        total_time = 0.0
+        current_fuel = float(starting_fuel)
         
-        # Get wear penalties (vectorized)
-        wear_penalties = np.array([wear[int(idx)] for idx in wear_indices])
+        for lap_idx in range(laps):
+            # Tire wear penalty
+            wear_idx = starting_wear_idx + lap_idx if first_stint else lap_idx
+            wear_penalty = wear[int(wear_idx)] if wear_idx < len(wear) else 0.0
+            
+            # Fuel weight penalty: based on current fuel level
+            # Carrying 110kg costs ~0.035 * 110 = 3.86s extra, gradually reduced
+            fuel_penalty = current_fuel * fuel_time_per_kg_f
+            
+            # First lap warm-up penalty
+            first_lap_penalty = penalty_first_lap if lap_idx == 0 else 0.0
+            
+            # Total lap time for this lap
+            lap_time = base + wear_penalty + fuel_penalty + first_lap_penalty
+            total_time += lap_time
+            
+            # Consume fuel for next lap
+            current_fuel = max(0.0, current_fuel - fuel_per)
         
-        # Calculate fuel for each lap (decreasing due to consumption)
-        fuel_levels = starting_fuel - np.arange(laps) * fuel_per
-        fuel_penalties = fuel_levels * fuel_time_per_kg
-        
-        # Total lap times: base + wear + fuel penalty + first-lap penalty
-        lap_times_array = base + wear_penalties + fuel_penalties + penalties
-        
-        total_time = np.sum(lap_times_array)
-        ending_fuel = max(0.0, starting_fuel - laps * fuel_per)
-        
-        return total_time, int(ending_wear_idx), ending_fuel
+        return total_time, int(ending_wear_idx), current_fuel
     
     def zero_stop(self, laps_left, lap_times, wear_effects, starting_wear, compound):
         # Simulate single continuous stint using fuel and wear model
@@ -267,14 +264,14 @@ class F1StrategyCalculator:
         }
     
     def one_stop(self, laps_left, lap_times, wear_effects, starting_wear, c1, c2, pit_delta):
-        # Try all possible split points for a single pitstop: first stint L1, second L2
+        # Try all possible split points for a single pitstop (no granularity reduction)
         starting_fuel = float(self.starting_fuel.get())
         fuel_per_lap = float(self.fuel_per_lap.get())
         time_per_kg = float(self.fuel_time_per_kg.get())
 
         best = None
-        # Optimisation: increment by 2 pour réduire les itérations (granularité réduite)
-        for l1 in range(1, laps_left, max(1, laps_left // 30)):
+        # Test all combinations (no step reduction for accuracy)
+        for l1 in range(1, laps_left):
             l2 = laps_left - l1
 
             s1 = self.simulate_stint(l1, c1, starting_wear, lap_times, wear_effects,
@@ -302,14 +299,15 @@ class F1StrategyCalculator:
         return best
     
     def two_stop(self, laps_left, lap_times, wear_effects, starting_wear, c1, c2, c3, pit_delta):
-        # Try all combinations of two pitstops (split into l1, l2, l3)
-        # Optimisation: réduire granularité avec un pas adapté au nombre de tours
+        # Try all combinations of two pitstops (no granularity reduction for accuracy)
         starting_fuel = float(self.starting_fuel.get())
         fuel_per_lap = float(self.fuel_per_lap.get())
         time_per_kg = float(self.fuel_time_per_kg.get())
 
         best = None
-        step = max(1, laps_left // 20)  # Réduire le nombre d'itérations significativement
+        
+        # Test all combinations (granularity reduced only for 2-stop due to O(n²) complexity)
+        step = max(1, laps_left // 15) if laps_left > 60 else 1  # Adaptive step
         
         for l1 in range(1, laps_left - 1, step):
             for l2 in range(1, laps_left - l1, step):
@@ -346,77 +344,29 @@ class F1StrategyCalculator:
         return best
     
     def calculate_undercut_score(self, strategy, pit_delta, wear_effects, lap_times):
-        """Calculate Undercut/Overcut score between -10 and +10.
+        """Calculate a simple ranking score based on actual strategy characteristics.
         
-        Negative scores (-10 to -5): Undercut favorable (tires degrade quickly = pit early)
-        Positive scores (+5 to +10): Overcut favorable (durable tires = stay out longer)
-        Neutral scores (±2): Balanced
+        This is now just a tiebreaker and doesn't affect the main ranking.
+        Ranking is purely based on total_time.
         
-        Args:
-            strategy: dict with 'compounds' and 'stint_lengths'
-            pit_delta: pit stop time in seconds
-            wear_effects: dict mapping compound -> list of wear penalties
-            lap_times: dict mapping compound -> lap time
-        
-        Returns:
-            float: score between -10 and +10
+        Returns a descriptive string instead of a numeric score.
         """
-        score = 0.0
         compounds_used = [c for c in strategy['compounds'] if c != '']
         stint_lengths = [s for s in strategy['stint_lengths'] if s != 0]
         
-        if not compounds_used:
-            return score
+        if not compounds_used or len(stint_lengths) < 2:
+            return "Monostop"
         
-        # Criterion 1: Average tire degradation over the stint
-        # Calculate average wear rate for each compound used
-        avg_degradations = []
-        for compound in compounds_used:
-            wear = wear_effects[compound]
-            if len(wear) > 6:  # Only consider after warm-up phase
-                # Get linear wear phase (laps 6 to 80% of max)
-                wear_values = wear[6:int(len(wear) * 0.8)]
-                if wear_values:
-                    laps_in_phase = len(wear_values)
-                    avg_deg = (wear_values[-1] - wear_values[0]) / max(1, laps_in_phase - 1)
-                    avg_degradations.append(avg_deg)
-            else:
-                avg_degradations.append(0.0)
+        # Check if it's an undercut or overcut pattern
+        first_stint = stint_lengths[0]
+        avg_other_stints = sum(stint_lengths[1:]) / len(stint_lengths[1:]) if len(stint_lengths) > 1 else first_stint
         
-        if avg_degradations:
-            avg_deg_overall = sum(avg_degradations) / len(avg_degradations)
-            
-            # High degradation (fast, fragile tires) → Undercut favorable
-            if avg_deg_overall > 0.04:
-                score -= 8  # Strong undercut signal
-            # Low degradation (durable tires) → Overcut favorable
-            elif avg_deg_overall < 0.035:
-                score += 8  # Strong overcut signal
-            # Else: neutral (score stays near 0)
-        
-        # Criterion 2: Pit stop duration
-        # Long pit stops make undercut more favorable (pit early to minimize loss)
-        if pit_delta > 23.0:
-            score -= 1  # Slightly favor undercut
-        elif pit_delta < 22.0:
-            score += 1  # Slightly favor overcut
-        
-        # Criterion 3: Stint distribution
-        if len(stint_lengths) >= 2:
-            stint_1 = stint_lengths[0]
-            avg_other = sum(stint_lengths[1:]) / len(stint_lengths[1:])
-            
-            # Undercut: first stint much shorter than others (pit early, new tires early)
-            if stint_1 < avg_other * 0.7:  # First stint significantly shorter
-                score -= 2
-            # Overcut: first stint much longer than others (stay out, late pit)
-            elif stint_1 > avg_other * 1.3:  # First stint significantly longer
-                score += 2
-        
-        # Clamp score between -10 and +10
-        score = max(-10.0, min(10.0, score))
-        
-        return score
+        if first_stint < avg_other_stints * 0.75:
+            return "Undercut"
+        elif first_stint > avg_other_stints * 1.25:
+            return "Overcut"
+        else:
+            return "Équilibré"
     
     def get_compound_name(self, compound):
         names = {'S': 'Soft', 'M': 'Medium', 'H': 'Hard'}
@@ -499,13 +449,12 @@ class F1StrategyCalculator:
             
             # Calculate undercut/overcut score for each strategy
             for strategy in strategies:
-                strategy['undercut_score'] = self.calculate_undercut_score(
+                strategy['strategy_type'] = self.calculate_undercut_score(
                     strategy, pit_delta, wear_effects, lap_times
                 )
             
-            # Sort by total time, then by undercut score (negative first = undercut favorable)
-            # Negative scores (undercut) appear first, then positive scores (overcut)
-            strategies.sort(key=lambda x: (x['total_time'], x.get('undercut_score', 0)))
+            # Sort ONLY by total time (no secondary sorting)
+            strategies.sort(key=lambda x: x['total_time'])
             
             # Display results
             self.results_text.delete(1.0, tk.END)
@@ -526,15 +475,9 @@ class F1StrategyCalculator:
                 formatted_time = self.format_time(strategy['total_time'])
                 self.results_text.insert(tk.END, f"  Temps total: {formatted_time}\n")
                 
-                # Display undercut/overcut strategy type
-                undercut_score = strategy.get('undercut_score', 0)
-                if undercut_score < -3:
-                    strategy_type = "[UNDERCUT]"
-                elif undercut_score > 3:
-                    strategy_type = "[OVERCUT]"
-                else:
-                    strategy_type = "[NEUTRE]"
-                self.results_text.insert(tk.END, f"  {strategy_type}\n\n")
+                # Display strategy type (Undercut, Overcut, or Équilibré)
+                strategy_type = strategy.get('strategy_type', 'Équilibré')
+                self.results_text.insert(tk.END, f"  Type: [{strategy_type}]\n\n")
                 
                 num_stops = sum(1 for c in strategy['compounds'] if c != '') - 1
                 self.results_text.insert(tk.END, f"  Nombre d'arrêts: {num_stops}\n\n")
